@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  autointerview:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: autointerview-api
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PYTHONPATH=/app
+    volumes:
+      # Mount volumes for persistent storage
+      - ./videos:/app/videos
+      - ./audio:/app/audio
+      - ./reports:/app/reports
+      # Mount .env file if it exists
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    # Add device access for audio/video (Linux only)
+    devices:
+      - /dev/snd:/dev/snd  # Audio devices
+    # For video devices, uncomment the line below if needed
+    # - /dev/video0:/dev/video0  # Video devices
+    
+  # Optional: Redis for session management (if needed in future)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: autointerview-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   restart: unless-stopped
+
+# volumes:
+#   redis_data:
