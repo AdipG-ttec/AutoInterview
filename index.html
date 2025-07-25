@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Interview</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Start Screen Overlay -->
+    <div class="start-screen" id="start-screen">
+        <div class="start-content">
+            <h1 class="start-title">Auto Interview</h1>
+            <p class="start-subtitle">
+                Welcome to your automated technical interview for the <span id="start-role">Software Engineer</span> position 
+                specializing in <span id="start-domain">Machine Learning</span>. <br>While this interview will be taken by an AI system, the evaluation and the final decision will be made by human reviewers.
+            </p>
+            <button class="start-button" id="start-btn">
+                Start Interview
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div class="app-container" id="app-container" style="display: none;">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="logo">Auto Interview</h1>
+            <div class="interview-info">
+                <div class="role-info">Role: <span id="role-name">Software Engineer</span></div>
+                <div class="role-info">Domain: <span id="domain-name">Machine Learning</span></div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Video Section -->
+            <div class="video-section">
+                <div class="video-container">
+                    <video id="video-feed" class="video-feed" autoplay muted playsinline></video>
+                    <div class="video-placeholder" id="video-placeholder">
+                        Video Feed of User
+                    </div>
+                    <div class="stage-indicator" id="stage-indicator" style="display: none;">
+                        Stage: <span id="current-stage">Ready</span>
+                    </div>
+                </div>
+                
+                <!-- Timer Bar -->
+                <div class="time-bar-container" id="time-bar-container" style="display: none;">
+                    <div class="time-label" id="time-label">-- left</div>
+                    <div class="time-bar" id="time-bar"></div>
+                </div>
+            </div>
+
+            <!-- Question Section -->
+            <div class="question-section">
+                <div class="question-text" id="question-text">
+                    Preparing interview...
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Status Messages -->
+    <div class="status-section" id="status-section" style="display: none;">
+        <div class="status-message" id="status-message"></div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="app.js"></script>
+</body>
+</html>
