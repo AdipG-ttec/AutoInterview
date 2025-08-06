@@ -1,6 +1,6 @@
 class AutoInterviewApp {
     constructor() {
-        this.apiBase = 'http://localhost:8000';
+        this.apiBase = 'localhost:8000'; // Default API base URL, can be overridden by environment
         this.interviewId = null;
         this.websocket = null;
         this.videoStream = null;
@@ -210,7 +210,10 @@ class AutoInterviewApp {
     }
 
     connectWebSocket(id) {
-        const wsUrl = `ws://localhost:8000/ws/${id}`;
+        // Use dynamic host and protocol detection for Cloud Run compatibility
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const wsUrl = `${protocol}//${host}/ws/${id}`;
         console.log(`Connecting to WebSocket: ${wsUrl}`);
         this.websocket = new WebSocket(wsUrl);
         this.websocketConnected = false;

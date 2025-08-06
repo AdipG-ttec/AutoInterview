@@ -1,0 +1,18 @@
+# Core dependencies for Cloud Run (no audio/video)
+google-genai
+genai
+fastapi>=0.104.0
+uvicorn>=0.24.0
+websockets>=12.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+numpy>=2.0.0
+
+# Note: Audio/video dependencies removed for Cloud Run compatibility:
+# - pyaudio (requires portaudio system libraries)
+# - pygame (requires audio system)
+# - opencv-python (requires video system libraries)
+# - streamlit (not needed for API-only deployment)
+
+# Standard library modules (no installation needed)
+# threading, wave, base64, io, json, datetime, logging, typing, queue, os, time, subprocess, platform, concurrent.futures, dataclasses, enum

@@ -1,0 +1,60 @@
+name: dev-app-cicd
+
+on: 
+  push:
+     branches: ["main"]
+
+env:
+  GPR: "us-east4"
+  GPID: "infra-automation-non-prod-a59d"
+  SAE: "github-sa@infra-automation-non-prod-a59d.iam.gserviceaccount.com"
+  WIP: "projects/611109331655/locations/global/workloadIdentityPools/github/providers/github"
+  GAR: "infra-automation-non-prod"
+  CR: "auto-interview"
+  DPD: "docker.pkg.dev"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        id: auth
+        with:
+          workload_identity_provider: ${{ env.WIP }}
+          service_account: ${{ env.SAE }}
+
+      - name: Set-up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2.1.4
+        with:
+          project_id: ${{ env.GPID }}
+
+      - name: Authenticate with GAR
+        run: gcloud auth configure-docker ${{ env.GPR }}-${{ env.DPD }}
+
+      - name: Build Docker Image
+        run: |
+          docker build -t ${{ env.GPR }}-${{ env.DPD }}/${{ env.GPID }}/${{ env.GAR }}/${{ env.CR }}:latest .
+      
+      - name: Push Docker Image to GAR
+        run: |
+          docker push ${{ env.GPR }}-${{ env.DPD }}/${{ env.GPID }}/${{ env.GAR }}/${{ env.CR }}:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.CR }} \
+            --image=${{ env.GPR }}-${{ env.DPD }}/${{ env.GPID }}/${{ env.GAR }}/${{ env.CR }}:latest \
+            --region=${{ env.GPR }} \
+            --platform=managed \
+            --port 8000 \
+            --timeout 600s \
+            --service-account=${{ env.SAE }} \
+            --update-secrets=GEMINI_API_KEYE=GEMINI_API_KEY:latest

@@ -1,27 +1,44 @@
 from google import genai
-from google.genai import types
 import json
 import time
 import threading
 from typing import List, Dict, Optional, Tuple
 import logging
 import io
-import pygame
-import tempfile
 import os
 import asyncio
 from dotenv import load_dotenv
 import wave
-import pyaudio
 from concurrent.futures import ThreadPoolExecutor
 import queue
 import base64
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from enum import Enum
-import cv2
 import numpy as np
 import threading
+
+# Optional imports for audio/video (not available in Cloud Run)
+try:
+    import pygame
+    PYGAME_AVAILABLE = True
+except ImportError:
+    PYGAME_AVAILABLE = False
+    
+try:
+    import pyaudio
+    PYAUDIO_AVAILABLE = True
+except ImportError:
+    PYAUDIO_AVAILABLE = False
+    
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+
+# Detect Cloud Run environment
+IS_CLOUD_RUN = os.getenv('K_SERVICE') is not None or os.getenv('GOOGLE_CLOUD_PROJECT') is not None
 
 # FastAPI imports
 from fastapi import FastAPI, WebSocket, HTTPException, BackgroundTasks, UploadFile, File
@@ -148,6 +165,10 @@ class VideoToAudioConverter:
         
     def start_video_capture(self, camera_index=0):
         """Start video capture from camera with 16:9 aspect ratio."""
+        if IS_CLOUD_RUN or not CV2_AVAILABLE:
+            logger.warning("Video capture not available in Cloud Run environment")
+            return False
+            
         try:
             self.cap = cv2.VideoCapture(camera_index)
             if not self.cap.isOpened():
@@ -203,15 +224,18 @@ class VideoToAudioConverter:
             if not self.video_writer.isOpened():
                 raise Exception("Failed to initialize video writer")
             
-            # Initialize audio
-            self.audio = pyaudio.PyAudio()
-            self.audio_stream = self.audio.open(
-                format=pyaudio.paInt16,
-                channels=self.channels,
-                rate=self.sample_rate,
-                input=True,
-                frames_per_buffer=1024
-            )
+            # Initialize audio (only if pyaudio is available)
+            if PYAUDIO_AVAILABLE:
+                self.audio = pyaudio.PyAudio()
+                self.audio_stream = self.audio.open(
+                    format=pyaudio.paInt16,
+                    channels=self.channels,
+                    rate=self.sample_rate,
+                    input=True,
+                    frames_per_buffer=1024
+                )
+            else:
+                logger.warning("PyAudio not available - audio recording disabled")
             
             logger.info(f"Continuous video recording will be saved to: {self.video_filename}")
             return True
@@ -473,20 +497,31 @@ CRITICAL RULES:
             "max_output_tokens": 500
         }
         
-        # Audio settings
-        self.audio = pyaudio.PyAudio()
-        self.audio_format = pyaudio.paInt16
-        self.channels = 1
-        self.sample_rate = 24000
-        self.chunk_size = 1024
+        # Audio settings (only if available)
+        if PYAUDIO_AVAILABLE:
+            self.audio = pyaudio.PyAudio()
+            self.audio_format = pyaudio.paInt16
+            self.channels = 1
+            self.sample_rate = 24000
+            self.chunk_size = 1024
+        else:
+            self.audio = None
+            logger.warning("Audio functionality disabled - PyAudio not available")
         
-        pygame.mixer.init()
+        if PYGAME_AVAILABLE:
+            pygame.mixer.init()
+        else:
+            logger.warning("Pygame not available - some audio features disabled")
         
-        # Video-to-audio converter
-        self.video_converter = VideoToAudioConverter(
-            sample_rate=self.sample_rate,
-            channels=self.channels
-        )
+        # Video-to-audio converter (only if not in Cloud Run)
+        if not IS_CLOUD_RUN:
+            self.video_converter = VideoToAudioConverter(
+                sample_rate=self.sample_rate if PYAUDIO_AVAILABLE else 24000,
+                channels=self.channels if PYAUDIO_AVAILABLE else 1
+            )
+        else:
+            self.video_converter = None
+            logger.info("Video converter disabled in Cloud Run environment")
         self.use_video_input = False
         
         # Interview tracking
@@ -949,7 +984,11 @@ Scenario 2: [modification to the first scenario that requires adjusting the appr
     
     def enable_video_input(self, camera_index=0):
         """Enable video input mode for the interview."""
-        if self.video_converter.start_video_capture(camera_index):
+        if IS_CLOUD_RUN:
+            logger.warning("Video input not supported in Cloud Run environment")
+            return False
+            
+        if self.video_converter and self.video_converter.start_video_capture(camera_index):
             self.use_video_input = True
             print("✅ Video input enabled - continuous recording will start with interview")
             print("📹 Video will be recorded in 16:9 aspect ratio")
@@ -1010,6 +1049,13 @@ Scenario 2: [modification to the first scenario that requires adjusting the appr
     async def generate_and_speak_question(self, question_prompt: str) -> None:
         """Generate and speak interview question directly from prompt using voice generation."""
         print(f"\n🗣️ {question_prompt}")
+        
+        # In Cloud Run, just log the question instead of trying to speak it
+        if IS_CLOUD_RUN or not PYAUDIO_AVAILABLE:
+            logger.info(f"Interview question: {question_prompt}")
+            question_text = question_prompt.replace("Ask the question:", "").replace("Announce:", "").strip().strip("'\"")
+            print(f"[Bot speaking]: {question_text}")
+            return
         
         try:
             async with self.client.aio.live.connect(model=self.live_model, config=self.voice_config) as session:
@@ -1101,6 +1147,12 @@ Scenario 2: [modification to the first scenario that requires adjusting the appr
             "time_remaining": time_limit,
             "message": f"Timer started - {time_limit} seconds to respond"
         })
+        
+        # In Cloud Run environment, simulate response collection
+        if IS_CLOUD_RUN:
+            logger.info(f"Simulating response collection for {time_limit} seconds in Cloud Run")
+            await asyncio.sleep(time_limit)
+            return "[Response collected in Cloud Run mode]", time_limit
         
         try:
             async with self.client.aio.live.connect(model=self.live_model, config=self.stt_config) as session:
@@ -1621,9 +1673,11 @@ Scenario 2: [modification to the first scenario that requires adjusting the appr
     def cleanup(self):
         """Clean up resources."""
         try:
-            self.audio.terminate()
-            pygame.mixer.quit()
-            if hasattr(self, 'video_converter'):
+            if self.audio and PYAUDIO_AVAILABLE:
+                self.audio.terminate()
+            if PYGAME_AVAILABLE:
+                pygame.mixer.quit()
+            if hasattr(self, 'video_converter') and self.video_converter:
                 self.video_converter.cleanup()
             if hasattr(self, 'executor'):
                 self.executor.shutdown(wait=True)
@@ -1809,13 +1863,15 @@ class InterviewManager:
 app = FastAPI(
     title="AI Video Interview System",
     description="FastAPI backend for conducting structured video interviews with AI",
-    version="1.0.0"
+    version="1.0.0",
+    root_path = "/auto-interview",
+    docs_url = "/docs"
 )
 
-# Add CORS middleware
+# Add CORS middleware with Cloud Run support
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins for Cloud Run
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1824,6 +1880,11 @@ app.add_middleware(
 # Global interview manager instance
 interview_manager = InterviewManager()
 
+# ✅ Root all endpoint
+@app.get("/hello-world")
+def read_root():
+    return {"message": "Hello, World!"}
+    
 # API Endpoints
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -1885,7 +1946,7 @@ async def create_interview(config: InterviewConfig):
             success=True,
             message="Interview created successfully",
             interview_id=interview_id,
-            data={"config": config.dict()}
+            data={"config": config.model_dump()}
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create interview: {str(e)}")
@@ -1948,7 +2009,7 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: str):
         logger.info(f"Initial WebSocket status for {interview_id}: {status}")
         if status:
             # Convert datetime to ISO string for JSON serialization
-            status_dict = status.dict()
+            status_dict = status.model_dump()
             if status_dict.get('start_time'):
                 status_dict['start_time'] = status_dict['start_time'].isoformat()
             
@@ -2066,28 +2127,6 @@ async def main():
         if interview_bot:
             interview_bot.cleanup()
 
-def run_fastapi_server():
-    """Run the FastAPI server with Uvicorn."""
-    print("🚀 Starting FastAPI Video Interview Server...")
-    print("📖 API Documentation: http://localhost:8000/docs")
-    print("🌐 Server URL: http://localhost:8000")
-    print("⏹️  Press Ctrl+C to stop the server")
-    print("-" * 50)
-    
-    uvicorn.run(
-        "dockvid:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False,
-        access_log=True
-    )
-
 if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) > 1 and sys.argv[1] == "--api":
-        # Run FastAPI server
-        run_fastapi_server()
-    else:
         # Run original interview system
         asyncio.run(main())

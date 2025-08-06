@@ -7,10 +7,14 @@ services:
       dockerfile: Dockerfile
     container_name: autointerview-api
     ports:
-      - "8000:8000"
+      - "8000:8000"  # Map to port 8000 to match Cloud Run configuration
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - PYTHONPATH=/app
+      # Simulate Cloud Run environment for testing
+      - K_SERVICE=autointerview
+      - PORT=8000
+      - GOOGLE_CLOUD_PROJECT=test-project
     volumes:
       # Mount volumes for persistent storage
       - ./videos:/app/videos
@@ -25,11 +29,10 @@ services:
       timeout: 10s
       start_period: 60s
       retries: 3
-    # Add device access for audio/video (Linux only)
-    devices:
-      - /dev/snd:/dev/snd  # Audio devices
-    # For video devices, uncomment the line below if needed
-    # - /dev/video0:/dev/video0  # Video devices
+    # Remove device access for Cloud Run simulation (no audio/video hardware)
+    # devices:
+    #   - /dev/snd:/dev/snd  # Audio devices disabled for Cloud Run
+    # - /dev/video0:/dev/video0  # Video devices disabled for Cloud Run
     
   # Optional: Redis for session management (if needed in future)
   # redis:
